@@ -1,0 +1,176 @@
+name: 🤞 Build Android!
+on:
+  # Manual
+  workflow_dispatch:
+    inputs:
+      make-release:
+        description: 'Make release'
+        required: false
+        type: boolean
+        default: true
+
+# Global Settings
+# SCONS_CACHE for windows must be set in the build environment
+env:
+  # Used for cache key as well as for downloading the correct Godot version.
+  GODOT_BRANCH: 3.x
+
+jobs:
+  android:
+    # Based on https://github.com/godotengine/godot-build-scripts/blob/3.x/build-android/build.sh
+    runs-on: "ubuntu-latest"
+    name: Android ${{ matrix.name }}
+    env:
+      SCONSFLAGS: 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Templates
+            cache-name: android
+            build-mono: false
+
+    steps:
+      # region Setup
+      - uses: actions/checkout@v3
+
+      - name: Download Godot
+        uses: ./.github/actions/godot-download
+        with:
+          version: ${{ env.GODOT_BRANCH }}
+
+      - name: Linux dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          # The actual dependencies
+          sudo apt-get install build-essential pkg-config libx11-dev libxcursor-dev \
+              libxinerama-dev libgl1-mesa-dev libglu-dev libasound2-dev libpulse-dev \
+              libdbus-1-dev libudev-dev libxi-dev libxrandr-dev yasm xvfb unzip \
+              libspeechd-dev speech-dispatcher
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - name: Setup Godot build cache
+        uses: ./.github/actions/godot-cache
+        with:
+          cache-name: ${{ matrix.cache-name }}
+        continue-on-error: true
+
+      - name: Setup python and scons
+        uses: ./.github/actions/godot-deps
+      # endregion
+
+      # region    (target=release)
+      - name: Compilation (android_arch=armv7, target=release)
+        uses: ./.github/actions/godot-build
+        with:
+          sconsflags: ${{ env.SCONSFLAGS }} android_arch=armv7 ${{ matrix.build-mono && 'mono_prefix=$HOME/mono-installs/android-armv7-release' || '' }} debug_symbols=no lto=full
+          platform: android
+          target: release
+          tools: false
+          encryption-key: ${{ secrets.ENCRYPTION_KEY }}
+      # endregion
+
+      - name: Package Templates
+        run: |
+          pushd platform/android/java
+          ./gradlew generateGodotTemplates
+          popd
+          
+          mkdir -p $HOME/out/templates
+          cp bin/android_source.zip $HOME/out/templates/
+          cp bin/android_release.apk $HOME/out/templates/
+          cp bin/godot-lib.release.aar $HOME/out/templates/
+
+          if ${{ matrix.build-mono }}; then
+            mkdir -p $HOME/out/templates/bcl
+            cp -r $HOME/mono-bcls/android-bcl/* $HOME/out/templates/bcl/
+          fi
+
+      - name: Upload Templates
+        uses: ./.github/actions/upload-artifact
+        with:
+          path: ~/out/templates
+          name: ${{ matrix.cache-name }}-templates
+      # endregion
+
+ 
+  create-release:
+    if: success() && (
+        (github.event_name == 'push') ||
+        (github.event_name == 'schedule') ||
+        (github.event_name == 'workflow_dispatch' && inputs.make-release)
+      )
+    needs: [android]
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag-name.outputs.tag }}
+    steps:
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Short SHA
+        id: short-sha
+        run: echo "sha7=$(echo ${GITHUB_SHA} | cut -c1-7)" >> $GITHUB_OUTPUT
+      
+      - name: Tag Name
+        id: tag-name
+        run: echo "tag=Release-${{ steps.date.outputs.date }}-${{ steps.short-sha.outputs.sha7 }}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag-name.outputs.tag }}
+          name: Release ${{ steps.date.outputs.date }} #${{ steps.short-sha.outputs.sha7 }}
+          draft: false
+          prerelease: false
+
+  upload-release-artifacts: 
+    if: success() && (
+        (github.event_name == 'push') ||
+        (github.event_name == 'schedule') ||
+        (github.event_name == 'workflow_dispatch' && inputs.make-release)
+      )
+    needs: create-release
+    name: Upload Release Artifacts
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        artifact_name: [
+          windows-editor-64,
+        ]
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ./${{ matrix.artifact_name }}
+      
+      - name: Zip Artifact
+        run: |
+          original_path=$(pwd)
+          pushd ${{ matrix.artifact_name }}
+          zip -ry ${original_path}/${{ matrix.artifact_name }}.zip *
+          popd
+
+      - name: Debug
+        shell: bash
+        run: ls
+
+      - name: Upload Artifact
+        uses: softprops/action-gh-release@v0.1.15
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.create-release.outputs.tag }}
+          files: ./${{ matrix.artifact_name }}.zip
