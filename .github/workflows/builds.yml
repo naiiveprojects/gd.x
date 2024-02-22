@@ -21,7 +21,7 @@ on:
 # SCONS_CACHE for windows must be set in the build environment
 env:
   # Used for cache key as well as for downloading the correct Godot version.
-  GODOT_BRANCH: 3.x
+  GODOT_BRANCH: 4.x
 
 jobs:
   android:
