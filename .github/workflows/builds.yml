@@ -79,7 +79,7 @@ jobs:
         with:
           sconsflags: ${{ env.SCONSFLAGS }} android_arch=armv7 ${{ matrix.build-mono && 'mono_prefix=$HOME/mono-installs/android-armv7-release' || '' }} debug_symbols=no lto=full
           platform: android
-          target: release
+          target: template_release
           tools: false
           encryption-key: ${{ secrets.ENCRYPTION_KEY }}
       # endregion
@@ -119,7 +119,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Templates
+          - name: template_release
             cache-name: javascript
             build-mono: false
 
@@ -169,7 +169,7 @@ jobs:
         with:
           sconsflags: ${{ env.SCONSFLAGS }} debug_symbols=no lto=full
           platform: javascript
-          target: release
+          target: template_release
           tools: false
           encryption-key: ${{ secrets.ENCRYPTION_KEY }}
 
@@ -178,7 +178,7 @@ jobs:
         with:
           sconsflags: ${{ env.SCONSFLAGS }} threads_enabled=yes debug_symbols=no lto=full
           platform: javascript
-          target: release
+          target: template_release
           tools: false
           encryption-key: ${{ secrets.ENCRYPTION_KEY }}
 
@@ -257,7 +257,7 @@ jobs:
           buildroot: "${{ github.workspace }}/x86_64-godot-linux-gnu_sdk-buildroot/bin"
           sconsflags: ${{ env.SCONSFLAGS }} bits=64 ${{ matrix.build-mono && 'mono_prefix=$HOME/mono-installs/desktop-linux-x86_64-release' || '' }} debug_symbols=no lto=full
           platform: linuxbsd
-          target: release
+          target: template_release
           tools: false
           encryption-key: ${{ secrets.ENCRYPTION_KEY }}
       
@@ -331,7 +331,7 @@ jobs:
         with:
           sconsflags: ${{ env.SCONSFLAGS }} bits=64 ${{ matrix.build-mono && 'mono_prefix=$HOME/mono-installs/desktop-windows-x86_64-release' || '' }} debug_symbols=no
           platform: windows
-          target: release_debug
+          target: editor
           tools: true
           encryption-key: ${{ secrets.ENCRYPTION_KEY }}
       
@@ -355,7 +355,7 @@ jobs:
         with:
           sconsflags: ${{ env.SCONSFLAGS }} bits=64 ${{ matrix.build-mono && 'mono_prefix=$HOME/mono-installs/desktop-windows-x86_64-release' || '' }} debug_symbols=no
           platform: windows
-          target: release
+          target: template_release
           tools: false
           encryption-key: ${{ secrets.ENCRYPTION_KEY }}
 
